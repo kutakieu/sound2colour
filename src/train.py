@@ -6,6 +6,8 @@ import numpy as np
 import sys, getopt
 from random import shuffle
 import random
+from os import listdir
+from os.path import isfile, join
 
 from pytube import YouTube
 import librosa
@@ -18,7 +20,7 @@ from python_speech_features import mfcc
 
 # Parameters
 learning_rate = 0.001
-training_iters = 3
+training_iters = 100
 batch_size = 50
 display_step = 100
 num_data = 0
@@ -66,8 +68,9 @@ def load_generic_audio_video(directory, sample_rate, video_list, video_index, le
     # to get image instance from numpy array
     fps = 30
     res = []
+    hsv_average = np.zeros((144,3))
     num_frames = int(len / 16000) * fps
-    for i in range(num_frames):
+    for i in range(num_frames-1):
         if fps == 30 and i % 5 == 4:
             continue
         img = cv2.blur(clip.get_frame(i),(100,100))
@@ -75,6 +78,7 @@ def load_generic_audio_video(directory, sample_rate, video_list, video_index, le
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         hsv = hsv.reshape(144,3)
         Hue_vec = hsv[:,0]
+        hsv_average[:, 1:] = hsv_average[:,0:2]
         if sum(Hue_vec) == 0 and i>100:
             continue
         # print(Hue_vec)
@@ -84,6 +88,50 @@ def load_generic_audio_video(directory, sample_rate, video_list, video_index, le
         yield mfcc_feat, Hue_vec
     #     res.append([mfcc_feat, Hue_vec])
     # return res
+
+def load_generic_from_saved_audio_video(directory, sample_rate, video_list, video_index, len_video_list):
+
+    filenames = [f for f in listdir(directory) if isfile(join(directory, f))]
+    current_video = video_list[int(video_index % len_video_list)]
+    download_youtube(directory, video_name=current_video)
+    # clip = mp.VideoFileClip(directory + "/tmp.mp4")
+    clip = mp.VideoFileClip(directory + "/tmp.mp4")
+    clip.audio.write_audiofile(directory + "/tmp.wav")
+    fps = int(clip.fps + 0.1)
+    if fps not in [24, 25, 30]:
+        return None
+    if fps == 30:
+        fps = 24
+    audio, _ = librosa.load(directory + "/tmp.wav", sr=sample_rate, mono=True)
+    audio = audio.reshape(-1, 1)
+    len = audio.shape[0]
+    len = len - (len % sample_rate)
+
+    sample_size = int(sample_rate / fps)
+
+    # to get frame
+    # clip.get_frame(0)
+    # to get image instance from numpy array
+    fps = 30
+    res = []
+    hsv_average = np.zeros((144, 3))
+    num_frames = int(len / 16000) * fps
+    for i in range(num_frames - 1):
+        if fps == 30 and i % 5 == 4:
+            continue
+        img = cv2.blur(clip.get_frame(i), (100, 100))
+        img = cv2.resize(img, (16, 9))
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        hsv = hsv.reshape(144, 3)
+        Hue_vec = hsv[:, 0]
+        hsv_average[:, 1:] = hsv_average[:, 0:2]
+        if sum(Hue_vec) == 0 and i > 100:
+            continue
+        # print(Hue_vec)
+        fragment = audio[i * sample_size: (i + 1) * sample_size]
+        mfcc_feat = mfcc(fragment, 16000)
+        # yield a set of data for each frame and corresponding audio's feature
+        yield mfcc_feat, Hue_vec
 
 def download_youtube(directory, video_name=None):
     subprocess.call(["rm", directory+"/tmp.wav", directory+"/tmp.mp4"])
@@ -219,9 +267,12 @@ def main(argv):
 
     saver = tf.train.Saver()
 
+
+
     # Launch the graph
     with tf.Session() as sess:
         sess.run(init)
+        # saver.restore(sess, "../tmp/restore/model.ckpt")
         save_path = saver.save(sess, "../tmp/model.ckpt")
         print("Model saved in file: %s" % save_path)
         # exit()
@@ -229,43 +280,54 @@ def main(argv):
         stop = False
         # Keep training until reach max iterations
         while step < training_iters:
-            iterator = load_generic_audio_video(directory, sample_rate, video_list, step, len(video_list))
-            frame = 0
-            x_ = np.zeros((1, n_steps,n_input))
-            x__ = np.zeros((1, n_input))
-            y_ = np.zeros((1, n_classes))
-            for mfcc_feat, Hue_vec in iterator:
-                x_[0, :n_steps-3, :] = x_[0, 3:,:]
-                x_[0, n_steps-3:,:] = mfcc_feat
-                y_[0, :] = Hue_vec
-                x__[0,:] = np.sum(mfcc_feat, axis=0)
-                # Run optimization op (backprop)
-                # print(y_)
-                sess.run(optimizer, feed_dict={x: x__, y: y_, dropout_1: 0.5, dropout_2: 0.5})
-                # print(y_)
-                # input('Press enter to continue: ')
-                if frame % display_step == 0:
-                    # Calculate batch loss
-                    # print("LOSS")
-                    pred = sess.run(prediction, feed_dict={x: x__, y: y_, dropout_1: 1, dropout_2: 1})
-                    print("Step " + str(step) + ", frame " + str(frame))
-                    print(pred.astype(int))
-                    print(y_)
-                    print("LOSS")
-                    cost = sess.run(loss, feed_dict={x: x__, y: y_, dropout_1: 1, dropout_2: 1})
-                    print(cost)
-                    # print(pred.astype(int))
-                    # print("Step " + str(step) + ", frame " + str(frame) + ", Minibatch Loss= " + \
-                    #       "{:.6f}".format(pred))
-                frame += 1
-            step += 1
-            save_path = saver.save(sess, "../tmp/model.ckpt")
+            try:
+                print("step" + str(step))
+                iterator = load_generic_audio_video(directory, sample_rate, video_list, step, len(video_list))
+                frame = 0
+                if isRNN:
+                    x_ = np.zeros((1, n_steps, n_input))
+                else:
+                    x_ = np.zeros((1, n_input))
+                y_ = np.zeros((1, n_classes))
+                for mfcc_feat, Hue_vec in iterator:
+                    if isRNN:
+                        x_[0, :n_steps-3, :] = x_[0, 3:,:]
+                        x_[0, n_steps-3:,:] = mfcc_feat
+                    else:
+                        x_[0, :] = np.sum(mfcc_feat, axis=0)
+                    y_[0, :] = Hue_vec
+
+                    # Run optimization op (backprop)
+                    # print(y_)
+                    sess.run(optimizer, feed_dict={x: x_, y: y_, dropout_1: 0.5, dropout_2: 0.5})
+                    # print(y_)
+                    # input('Press enter to continue: ')
+                    if frame % display_step == 0:
+                        # Calculate batch loss
+                        # print("LOSS")
+                        pred = sess.run(prediction, feed_dict={x: x_, y: y_, dropout_1: 1, dropout_2: 1})
+                        print("Step " + str(step) + ", frame " + str(frame))
+                        # print(pred.astype(int))
+                        # print(y_)
+
+                        cost = sess.run(loss, feed_dict={x: x_, y: y_, dropout_1: 1, dropout_2: 1})
+                        print("Loss = " + str(cost))
+                        # print(pred.astype(int))
+                        # print("Step " + str(step) + ", frame " + str(frame) + ", Minibatch Loss= " + \
+                        #       "{:.6f}".format(pred))
+                    frame += 1
+                step += 1
+                save_path = saver.save(sess, "../tmp/model.ckpt")
+            except:
+                step += 1
+                save_path = saver.save(sess, "../tmp/model.ckpt")
+                continue
             print("Model saved in file: %s" % save_path)
 
         print("Optimization Finished!")
 
         print("Testing Accuracy:", \
-            sess.run(loss, feed_dict={x: x__, y: y_, dropout_1: 1.0, dropout_2: 1.0}))
+            sess.run(loss, feed_dict={x: x_ , y: y_, dropout_1: 1.0, dropout_2: 1.0}))
 
 
 if __name__ == "__main__":
