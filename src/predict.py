@@ -224,6 +224,7 @@ def main(argv):
         video_frame = 0
         # for mfcc_feat, Hue_vec in iterator:
         for mfcc_feat in iterator:
+            # print(mfcc_feat)
             try:
                 if isRNN:
                     x_[0, :n_steps - 3, :] = x_[0, 3:, :]
@@ -243,7 +244,7 @@ def main(argv):
                     for j in range(16*ratio):
                         img[i,j,0] = pred[-1][int(j/ratio) + int(i/ratio)*16]
                         # print(pred[-1][int(j/ratio) + int(i/ratio)*16])
-                rgb = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)
+                rgb = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
                 rgb = cv2.blur(rgb,(100,100))
                 # cv2.imwrite("out.jpg", rgb)
                 video_writer.write(rgb)

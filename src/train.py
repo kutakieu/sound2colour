@@ -8,6 +8,7 @@ from random import shuffle
 import random
 from os import listdir
 from os.path import isfile, join
+import time
 
 from pytube import YouTube
 import librosa
@@ -18,9 +19,11 @@ from PIL import Image
 import cv2
 from python_speech_features import mfcc
 
+download = False
+
 # Parameters
 learning_rate = 0.001
-training_iters = 100
+training_iters = 1000
 batch_size = 50
 display_step = 100
 num_data = 0
@@ -89,20 +92,16 @@ def load_generic_audio_video(directory, sample_rate, video_list, video_index, le
     #     res.append([mfcc_feat, Hue_vec])
     # return res
 
-def load_generic_from_saved_audio_video(directory, sample_rate, video_list, video_index, len_video_list):
+def load_generic_from_saved_audio_video(directory, file, sample_rate):
 
-    filenames = [f for f in listdir(directory) if isfile(join(directory, f))]
-    current_video = video_list[int(video_index % len_video_list)]
-    download_youtube(directory, video_name=current_video)
-    # clip = mp.VideoFileClip(directory + "/tmp.mp4")
-    clip = mp.VideoFileClip(directory + "/tmp.mp4")
-    clip.audio.write_audiofile(directory + "/tmp.wav")
+    clip = mp.VideoFileClip(directory + file)
+
     fps = int(clip.fps + 0.1)
     if fps not in [24, 25, 30]:
         return None
     if fps == 30:
         fps = 24
-    audio, _ = librosa.load(directory + "/tmp.wav", sr=sample_rate, mono=True)
+    audio, _ = librosa.load(directory + file.split(".")[0] + ".wav", sr=sample_rate, mono=True)
     audio = audio.reshape(-1, 1)
     len = audio.shape[0]
     len = len - (len % sample_rate)
@@ -113,7 +112,6 @@ def load_generic_from_saved_audio_video(directory, sample_rate, video_list, vide
     # clip.get_frame(0)
     # to get image instance from numpy array
     fps = 30
-    res = []
     hsv_average = np.zeros((144, 3))
     num_frames = int(len / 16000) * fps
     for i in range(num_frames - 1):
@@ -121,7 +119,7 @@ def load_generic_from_saved_audio_video(directory, sample_rate, video_list, vide
             continue
         img = cv2.blur(clip.get_frame(i), (100, 100))
         img = cv2.resize(img, (16, 9))
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
         hsv = hsv.reshape(144, 3)
         Hue_vec = hsv[:, 0]
         hsv_average[:, 1:] = hsv_average[:, 0:2]
@@ -224,10 +222,20 @@ def NN2(x):
 
 
 def main(argv):
-    file_name = "../data/video_list.txt"
-    video_list_file = open(file_name, "r")
-    video_list = video_list_file.readlines()
-    print(len(video_list))
+
+    if download:
+        file_name = "../data/video_list.txt"
+        video_list_file = open(file_name, "r")
+        video_list = video_list_file.readlines()
+        print(len(video_list))
+    else:
+        directory = "../data/save/"
+        filenames = [f for f in listdir(directory) if isfile(join(directory, f))]
+        files = []
+        for filename in filenames:
+            if filename.split(".")[1] == "mp4":
+                files.append(filename)
+        print(len(files))
     print("here")
     # exit()
 
@@ -247,13 +255,13 @@ def main(argv):
     loss = tf.losses.mean_squared_error(y, prediction)
 
     """l2 regularization"""
-    # lambda_l2_reg = 0.05
-    # l2 = lambda_l2_reg * sum(
-    #     tf.nn.l2_loss(tf_var)
-    #     for tf_var in tf.trainable_variables()
-    #     if not ("noreg" in tf_var.name or "Bias" in tf_var.name)
-    # )
-    # loss += l2
+    lambda_l2_reg = 0.00005
+    l2 = lambda_l2_reg * sum(
+        tf.nn.l2_loss(tf_var)
+        for tf_var in tf.trainable_variables()
+        if not ("noreg" in tf_var.name or "Bias" in tf_var.name)
+    )
+    loss += l2
 
     # optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(loss)
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
@@ -279,10 +287,21 @@ def main(argv):
         step = 0
         stop = False
         # Keep training until reach max iterations
+        start_time = time.time()
         while step < training_iters:
+
             try:
                 print("step" + str(step))
-                iterator = load_generic_audio_video(directory, sample_rate, video_list, step, len(video_list))
+                if download:
+                    iterator = load_generic_audio_video(directory, sample_rate, video_list, step, len(video_list))
+                else:
+                    if step % len(files) == 0:
+                        shuffle(files)
+                    file = files[step % len(files)]
+                    print(file)
+                    iterator = load_generic_from_saved_audio_video(directory, file, sample_rate)
+
+
                 frame = 0
                 if isRNN:
                     x_ = np.zeros((1, n_steps, n_input))
@@ -325,7 +344,9 @@ def main(argv):
             print("Model saved in file: %s" % save_path)
 
         print("Optimization Finished!")
-
+        end_time = time.time()
+        print(end_time - start_time)
+        print("sec")
         print("Testing Accuracy:", \
             sess.run(loss, feed_dict={x: x_ , y: y_, dropout_1: 1.0, dropout_2: 1.0}))
 
