@@ -159,11 +159,21 @@ def main(argv):
     isRNN = True
 
     if isRNN:
+        # x = tf.placeholder("float", [None, n_steps, n_input])
+        # weight_1 = tf.Variable(tf.random_normal([n_hidden, 240]), name="weight_1")
+        # bias_1 = tf.Variable(tf.random_normal([240]), name="bias_1")
+        # weight_2 = tf.Variable(tf.random_normal([240, n_classes]), name="weight_2")
+        # bias_2 = tf.Variable(tf.random_normal([n_classes]), name="bias_2")
+        # lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0)
+        # outputs, _ = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32)
+        # fc_output = tf.nn.dropout(tf.sigmoid(tf.matmul(outputs[-1], weight_1) + bias_1), dropout_1)
+        # logits = tf.nn.dropout(tf.matmul(fc_output, weight_2) + bias_2, dropout_1)
+
         x = tf.placeholder("float", [None, n_steps, n_input])
-        weight_1 = tf.Variable(tf.random_normal([n_hidden, 240]), name="weight_1")
-        bias_1 = tf.Variable(tf.random_normal([240]), name="bias_1")
-        weight_2 = tf.Variable(tf.random_normal([240, n_classes]), name="weight_2")
-        bias_2 = tf.Variable(tf.random_normal([n_classes]), name="bias_2")
+        weight_1 = tf.get_variable("weight_1", [n_hidden, 240], dtype=tf.float32)
+        bias_1 = tf.get_variable("bias_1", [240], dtype=tf.float32)
+        weight_2 = tf.get_variable("weight_2", [240, n_classes], dtype=tf.float32)
+        bias_2 = tf.get_variable("bias_2", [n_classes], dtype=tf.float32)
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0)
         outputs, _ = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32)
         fc_output = tf.nn.dropout(tf.sigmoid(tf.matmul(outputs[-1], weight_1) + bias_1), dropout_1)
@@ -197,14 +207,16 @@ def main(argv):
     # print(pred)
     num_frames = []
     iterator = generate_test_audio("../data", 16000, num_frames)
-
+    saver = tf.train.Saver()
     with tf.Session() as sess:
         # Restore variables from disk.
-        saver = tf.train.Saver()
+
         saver.restore(sess, "../tmp/model.ckpt")
         print("Model restored.")
         # Check the values of the variables
-        # print("W_1 : %s" % W_1.eval())
+        print("W_1 : %s" % weight_1.eval())
+        print(weight_1.eval().shape)
+        # exit()
         # print("b_1 : %s" % b_1.eval())
         # print("W_2 : %s" % W_2.eval())
         # print("b_2 : %s" % b_2.eval())

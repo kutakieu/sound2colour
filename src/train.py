@@ -160,10 +160,14 @@ def RNN(x):
     return tf.matmul(outputs[-1], weight) + bias
 
 def RNN2(x):
-    weight_1 = tf.Variable(tf.random_normal([n_hidden, 240]), name="weight_1")
-    bias_1 = tf.Variable(tf.random_normal([240]), name="bias_1")
-    weight_2 = tf.Variable(tf.random_normal([240, n_classes]), name="weight_2")
-    bias_2 = tf.Variable(tf.random_normal([n_classes]), name="bias_2")
+    # weight_1 = tf.Variable(tf.random_normal([n_hidden, 240]), name="weight_1")
+    # bias_1 = tf.Variable(tf.random_normal([240]), name="bias_1")
+    # weight_2 = tf.Variable(tf.random_normal([240, n_classes]), name="weight_2")
+    # bias_2 = tf.Variable(tf.random_normal([n_classes]), name="bias_2")
+    weight_1 = tf.get_variable("weight_1", [n_hidden, 240], dtype=tf.float32, initializer=tf.random_normal_initializer())
+    bias_1 = tf.get_variable("bias_1", [240], dtype=tf.float32, initializer=tf.random_normal_initializer())
+    weight_2 = tf.get_variable("weight_2", [240, n_classes], dtype=tf.float32, initializer=tf.random_normal_initializer())
+    bias_2 = tf.get_variable("bias_2", [n_classes], dtype=tf.float32, initializer=tf.random_normal_initializer())
 
     lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0)
 
@@ -271,7 +275,8 @@ def main(argv):
     # accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
     # Initializing the variables
-    init = tf.initialize_all_variables()
+    # init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     saver = tf.train.Saver()
 
